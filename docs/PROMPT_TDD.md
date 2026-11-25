@@ -105,9 +105,9 @@ docs/
 
 > 完成每阶段后将 `- [ ]` 改为 `- [x]`，并同步勾选对应 `docs/specs/*.md` 末尾的细分清单。
 
-- [ ] **Phase 1**：完成 `tests/test_domain.py`、`agent/domain/` 与 `docs/specs/01_domain.md` 清单勾选，更新 `docs/TEST_LOG.md`
-- [ ] **Phase 2**：完成 `tests/test_rule_reviewer.py`、`agent/app/ports.py`、`agent/adapters/reviewers/`，更新 `docs/TEST_LOG.md`
-- [ ] **Phase 3**：完成 `tests/test_tools_and_store.py`、`agent/adapters/tools/`、`agent/adapters/stores/jsonl.py`，更新 `docs/TEST_LOG.md`
-- [ ] **Phase 4**：完成 `tests/test_agent_service.py`、`agent/app/service.py`、`fake_client.py`、`trace_logger.py` 与 `docs/specs/02_app.md` 清单勾选，更新 `docs/TEST_LOG.md`
-- [ ] **Phase 5**：完成 `tests/test_openai_and_architecture.py`、`openai_client.py`、`cli/app.py`、`main.py`、`.env.example` 与依赖清单，勾选 `docs/specs/03_adapters_and_wiring.md` 与 `04_tdd_and_test_log.md`
-- [ ] **最终收尾**：全量离线 `pytest -v` 全部通过，完成 `docs/Agent_Architecture.md`、`docs/TEST_LOG.md` 与 `README.md` 末尾清单勾选
+- [x] **Phase 1**：完成 `tests/test_domain.py`、`agent/domain/` 与 `docs/specs/01_domain.md` 清单勾选，更新 `docs/TEST_LOG.md`
+- [x] **Phase 2**：完成 `tests/test_rule_reviewer.py`、`agent/app/ports.py`、`agent/adapters/reviewers/`，更新 `docs/TEST_LOG.md`
+- [x] **Phase 3**：完成 `tests/test_tools_and_store.py`、`agent/adapters/tools/`、`agent/adapters/stores/jsonl.py`，更新 `docs/TEST_LOG.md`
+- [x] **Phase 4**：完成 `tests/test_agent_service.py`、`agent/app/service.py`、`fake_client.py`、`trace_logger.py` 与 `docs/specs/02_app.md` 清单勾选，更新 `docs/TEST_LOG.md`
+- [x] **Phase 5**：完成 `tests/test_openai_and_architecture.py`、`openai_client.py`、`cli/app.py`、`main.py`、`.env.example` 与依赖清单，勾选 `docs/specs/03_adapters_and_wiring.md` 与 `04_tdd_and_test_log.md`
+- [x] **最终收尾**：全量离线 `pytest -v` 全部通过，完成 `docs/Agent_Architecture.md`、`docs/TEST_LOG.md` 与 `README.md` 末尾清单勾选

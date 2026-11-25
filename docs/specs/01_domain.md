@@ -116,8 +116,8 @@ agent/domain/
 
 ## 6. 执行待办清单（GPT 逐项勾选）
 
-- [ ] 实现 `agent/domain/session.py`（`ToolCall`、`UserMessage`、`AssistantMessage` 含 `thinking`、`ToolResult` 含 `is_error`、`Message`、`Session` 含 `summary` / `compacted_until` / `append` / `active_messages`）
-- [ ] 实现 `agent/domain/tool.py`（`ToolContext(session_id)` 与 `Tool` 抽象）
-- [ ] 实现 `agent/domain/context.py`（`Context[O]` 含 `memory` 预留槽位、`estimate_tokens`、`estimate_context_tokens`、`split_for_compaction` 原子对安全切分）
-- [ ] 实现 `agent/domain/roles.py`（`Decision`、`CompactionSummary`、`Assistant`、`ToolCallReviewer`、`ContextCompactor`）
-- [ ] 验证 `agent/domain/` 零第三方依赖、零 `app`/`adapters` 导入，且 `tests/test_domain.py` 全绿
+- [x] 实现 `agent/domain/session.py`（`ToolCall`、`UserMessage`、`AssistantMessage` 含 `thinking`、`ToolResult` 含 `is_error`、`Message`、`Session` 含 `summary` / `compacted_until` / `append` / `active_messages`）
+- [x] 实现 `agent/domain/tool.py`（`ToolContext(session_id)` 与 `Tool` 抽象）
+- [x] 实现 `agent/domain/context.py`（`Context[O]` 含 `memory` 预留槽位、`estimate_tokens`、`estimate_context_tokens`、`split_for_compaction` 原子对安全切分）
+- [x] 实现 `agent/domain/roles.py`（`Decision`、`CompactionSummary`、`Assistant`、`ToolCallReviewer`、`ContextCompactor`）
+- [x] 验证 `agent/domain/` 零第三方依赖、零 `app`/`adapters` 导入，且 `tests/test_domain.py` 全绿

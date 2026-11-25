@@ -74,7 +74,7 @@ agent/
 
 ## 5. 架构落地验收清单（GPT 完成后勾选）
 
-- [ ] 三层目录结构与模块划分已按第 2 节完整落地，且通过 AST 依赖方向检查
-- [ ] 原生 Function Calling、`ToolReviewer` 三模式、`ToolContext` 会话隔离、70% 滚动压缩与降级重试均已实现
-- [ ] `Context.memory` 预留槽位保留完整，未引入任何第三方 Agent 框架
-- [ ] `agent/main.py` 保持唯一组装根职责
+- [x] 三层目录结构与模块划分已按第 2 节完整落地，且通过 AST 依赖方向检查
+- [x] 原生 Function Calling、`ToolReviewer` 三模式、`ToolContext` 会话隔离、70% 滚动压缩与降级重试均已实现
+- [x] `Context.memory` 预留槽位保留完整，未引入任何第三方 Agent 框架
+- [x] `agent/main.py` 保持唯一组装根职责

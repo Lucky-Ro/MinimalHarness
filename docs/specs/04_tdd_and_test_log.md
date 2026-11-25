@@ -82,9 +82,9 @@
 
 ## 3. 执行待办清单（GPT 逐项勾选）
 
-- [ ] Phase 1：`tests/test_domain.py` 编写并通过（领域对象、Token 估算、原子对切分）
-- [ ] Phase 2：`tests/test_rule_reviewer.py` 编写并通过（R-01 ~ R-08 异常与绕过边界、组合短路）
-- [ ] Phase 3：`tests/test_tools_and_store.py` 编写并通过（4 工具、`todo` 会话隔离、JSONL 往返与路径防护）
-- [ ] Phase 4：`tests/test_agent_service.py` 编写并通过（主循环、多会话隔离、异常闭环、70% 压缩与降级重试）
-- [ ] Phase 5：`tests/test_openai_and_architecture.py` 编写并通过（OpenAI 协议契约、AST 依赖方向守卫）
-- [ ] 全量离线 `pytest -v` 100% 通过，且每阶段真实结果与失败修复均已同步写入 `docs/TEST_LOG.md`
+- [x] Phase 1：`tests/test_domain.py` 编写并通过（领域对象、Token 估算、原子对切分）
+- [x] Phase 2：`tests/test_rule_reviewer.py` 编写并通过（R-01 ~ R-08 异常与绕过边界、组合短路）
+- [x] Phase 3：`tests/test_tools_and_store.py` 编写并通过（4 工具、`todo` 会话隔离、JSONL 往返与路径防护）
+- [x] Phase 4：`tests/test_agent_service.py` 编写并通过（主循环、多会话隔离、异常闭环、70% 压缩与降级重试）
+- [x] Phase 5：`tests/test_openai_and_architecture.py` 编写并通过（OpenAI 协议契约、AST 依赖方向守卫）
+- [x] 全量离线 `pytest -v` 100% 通过，且每阶段真实结果与失败修复均已同步写入 `docs/TEST_LOG.md`

@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+data/
+*.egg-info/
+build/
+
+# IDE 本地配置
+.idea/
+.vscode/
+
+# macOS 拉的屎
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+__MACOSX/

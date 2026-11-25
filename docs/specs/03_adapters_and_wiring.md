@@ -128,10 +128,10 @@ agent/
 
 ## 7. 执行待办清单（GPT 逐项勾选）
 
-- [ ] 实现 `agent/adapters/models/fake_client.py`（离线 TDD 专用）与 `openai_client.py`（原生 Function Calling、DeepSeek `reasoning_content`、`<conversation_summary>`、不回传历史 `thinking`）
-- [ ] 实现 `agent/adapters/stores/jsonl.py`（`save` / `load` / `list` 完整往返与防路径穿越校验）
-- [ ] 实现 `agent/adapters/reviewers/`（`RuleBasedReviewer`、`LlmToolReviewer`、`CompositeReviewer`）
-- [ ] 实现 `agent/adapters/tools/` 4 个工具（`TodoTool` 按 `ctx.session_id` 隔离、`WeatherTool`、`CalculatorTool` 安全 AST、`BashTool` 超时受控）
-- [ ] 实现 `agent/adapters/logging/trace_logger.py` 结构化 Trace 日志
-- [ ] 实现 `agent/adapters/cli/app.py` 多会话 CLI（`/new`、`/list`、`/use`、`/history`、`/quit`）与 `agent/main.py` 组装根
-- [ ] 补齐 `.env.example` 与依赖文件（`pyproject.toml` 或 `requirements.txt`）
+- [x] 实现 `agent/adapters/models/fake_client.py`（离线 TDD 专用）与 `openai_client.py`（原生 Function Calling、DeepSeek `reasoning_content`、`<conversation_summary>`、不回传历史 `thinking`）
+- [x] 实现 `agent/adapters/stores/jsonl.py`（`save` / `load` / `list` 完整往返与防路径穿越校验）
+- [x] 实现 `agent/adapters/reviewers/`（`RuleBasedReviewer`、`LlmToolReviewer`、`CompositeReviewer`）
+- [x] 实现 `agent/adapters/tools/` 4 个工具（`TodoTool` 按 `ctx.session_id` 隔离、`WeatherTool`、`CalculatorTool` 安全 AST、`BashTool` 超时受控）
+- [x] 实现 `agent/adapters/logging/trace_logger.py` 结构化 Trace 日志
+- [x] 实现 `agent/adapters/cli/app.py` 多会话 CLI（`/new`、`/list`、`/use`、`/history`、`/quit`）与 `agent/main.py` 组装根
+- [x] 补齐 `.env.example` 与依赖文件（`pyproject.toml` 或 `requirements.txt`）

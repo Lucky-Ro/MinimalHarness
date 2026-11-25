@@ -113,8 +113,8 @@ agent/app/
 
 ## 4. 执行待办清单（GPT 逐项勾选）
 
-- [ ] 实现 `agent/app/ports.py`（`Effort`、`ModelSettings`、`ModelClient`、`SessionStore` 含 `SessionNotFoundError`、`ToolReviewer`、`TraceLogger` / `NullTraceLogger`）
-- [ ] 实现 `agent/app/service.py` 会话管理接口（`new_session`、`list_sessions`、`get_session`）与 `chat()` 主循环
-- [ ] 实现 70% 上下文窗口 LLM 滚动压缩编排（保留完整历史仅推进 `compacted_until`、失败捕获记 `compaction_failed` 优雅降级且下次发消息自动重试、`delta == 0` 跳过）
-- [ ] 实现工具审核拒绝、未知工具、工具执行异常转 `ToolResult(is_error=True)` 闭环与 `max_iterations` 兜底
-- [ ] 验证 `agent/app/` 仅依赖标准库与 `agent.domain`，且 `tests/test_agent_service.py` 全绿
+- [x] 实现 `agent/app/ports.py`（`Effort`、`ModelSettings`、`ModelClient`、`SessionStore` 含 `SessionNotFoundError`、`ToolReviewer`、`TraceLogger` / `NullTraceLogger`）
+- [x] 实现 `agent/app/service.py` 会话管理接口（`new_session`、`list_sessions`、`get_session`）与 `chat()` 主循环
+- [x] 实现 70% 上下文窗口 LLM 滚动压缩编排（保留完整历史仅推进 `compacted_until`、失败捕获记 `compaction_failed` 优雅降级且下次发消息自动重试、`delta == 0` 跳过）
+- [x] 实现工具审核拒绝、未知工具、工具执行异常转 `ToolResult(is_error=True)` 闭环与 `max_iterations` 兜底
+- [x] 验证 `agent/app/` 仅依赖标准库与 `agent.domain`，且 `tests/test_agent_service.py` 全绿

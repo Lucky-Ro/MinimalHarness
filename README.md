@@ -15,7 +15,7 @@ main.py (组装根)
 
 - **领域层 `agent/domain/`**：定义系统自有语义（`Session`、`Message`、`Tool`、`ToolContext`、`Context[O]`、`Assistant`、`ToolCallReviewer`、`ContextCompactor`），零第三方依赖。
 - **应用层 `agent/app/`**：通过 `ModelClient`、`SessionStore`、`ToolReviewer`、`TraceLogger` 端口隔离外部依赖，`AgentService` 负责主循环、最大轮次限制、异常闭环及 70% 上下文滚动压缩编排。
-- **适配层 `agent/adapters/`**：对接 OpenAI 兼容接口（DeepSeek / GPT / 硅基流动）、JSONL 会话存储、4 个工具（`todo` / `weather` / `calculator` / `bash`）、规则/LLM 工具审核器与多会话 CLI；并提供 `FakeModelClient` 支持全离线 TDD。
+- **适配层 `agent/adapters/`**：提供 OpenAI 兼容接口、JSONL 会话存储、工具审核器和多会话 CLI。注册了 `todo`、`weather`、`calculator`、`bash` 四个核心工具和原题允许的模拟 `search`，通过 `FakeModelClient` 支持离线测试。
 - **组装根 `agent/main.py`**：全系统唯一同时认识所有具体实现类的地方，切换模型、审核策略或入口（如 CLI 换 Web）只需改此文件。
 
 > 完整设计细节与分层规格见 [`docs/Agent_Architecture.md`](docs/Agent_Architecture.md) 及 `docs/specs/`。
@@ -65,38 +65,57 @@ main.py (组装根)
 │       ├── 03_adapters_and_wiring.md  # 适配层、工具、审核器与组装根规格
 │       └── 04_tdd_and_test_log.md     # TDD 测试矩阵与日志规范
 ├── references/                        # 学习笔记参考教程与图解资料
-├── agent/                             # （待实现）Agent Runtime 源码
-└── tests/                             # （待实现）全离线 pytest 测试套件
+├── agent/                             # Agent Runtime 源码
+└── tests/                             # 全离线 pytest 测试套件
 ```
 
 ---
 
-## 4. 运行与测试方式（实现完成后使用）
+## 4. 运行与测试方式
 
-### 环境配置
+### 安装与配置
 
-复制 `.env.example` 为 `.env` 并填写 OpenAI 兼容接口凭证（以 DeepSeek 为例）：
+在项目根目录使用 macOS 或 Linux 和 Python 3.10+。会话文件锁依赖 POSIX，计算器和模拟天气均在本地执行。
 
 ```bash
-OPENAI_API_KEY=your_api_key
-OPENAI_BASE_URL=https://api.deepseek.com
-ASSISTANT_MODEL=deepseek-chat
-FLASH_MODEL=deepseek-chat
-CONTEXT_WINDOW=64000
-REVIEWER_MODE=composite   # rule | llm | composite
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[test]'
 ```
 
-### 运行离线 TDD 测试
+在当前目录的 `.env` 中按 [.env.example](.env.example) 填入 `OPENAI_API_KEY`。已导出的环境变量优先于文件配置。
+
+| 变量 | 用途与默认值 |
+| --- | --- |
+| `OPENAI_API_KEY` | 真实对话所需的接口密钥 |
+| `OPENAI_BASE_URL` | 兼容服务地址，默认 `https://api.deepseek.com` |
+| `ASSISTANT_MODEL` | 主对话模型，默认 `deepseek-v4-pro` |
+| `FLASH_MODEL` | 工具审核与滚动摘要的轻量模型，默认 `deepseek-flash` |
+| `CONTEXT_WINDOW` | 估算窗口大小，默认 64000，达 70% 时尝试压缩 |
+| `REVIEWER_MODE` | `rule`、`llm`、`composite`，默认 `composite` |
+| `AGENT_DATA_DIR` | 会话与待办存储目录，默认 `./data`；从不同目录启动的窗口可设为相同的绝对路径 |
+
+DeepSeek 主对话启用工具时会显式关闭 thinking 模式，以遵守项目对历史思考内容的隔离要求。模型和协议行为见 [DeepSeek 模型列表](https://api-docs.deepseek.com/quick_start/pricing/) 和 [Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/)。
+
+### 运行离线测试
 
 ```bash
 pytest -v
 ```
+
+测试用脚本模型和本地模拟传输验证多轮请求，测试进程内拦截外部网络连接。无需 API 密钥。
 
 ### 启动多会话 CLI
 
 ```bash
 python -m agent.main
 ```
+
+每个新窗口获得独立会话。可以在一个窗口输入“查上海天气，帮我把带伞记入待办”，在另一个窗口输入“把写周报记入待办”，再分别追问“我刚才记了什么？”。重启后用 `/list` 找到原会话，再用 `/use <id>` 继续。
+
+完整对话和待办分别保存在 `data/sessions/` 与 `data/todos/`。JSON 格式的 trace 写到标准错误。受限 bash 工具支持 `pwd`、`ls` 和输出字面文本的 `echo`，超时为 5 秒。
+
+可以输入“搜索如何写周报”试用 `search`。搜索查询内置样例资料，覆盖周报、会议纪要和会话管理。
 
 CLI 内置命令：`/new`（新建会话）、`/list`（列出会话）、`/use <session_id>`（切换会话）、`/history`（查看历史与摘要状态）、`/quit`（退出）。
 
@@ -112,6 +131,6 @@ CLI 内置命令：`/new`（新建会话）、`/list`（列出会话）、`/use 
 
 ## 6. 交付核对清单（GPT 完成后勾选）
 
-- [ ] `agent/` 与 `tests/` 已按架构实现，全量 `pytest -v` 离线通过
-- [ ] `.env.example` 与依赖配置已就绪，多会话 CLI（`python -m agent.main`）可正常启动
-- [ ] `docs/PROMPT_TDD.md`、`docs/specs/*.md`、`docs/Agent_Architecture.md` 与 `docs/TEST_LOG.md` 末尾待办清单均已勾选且原有规格正文未被篡改
+- [x] `agent/` 与 `tests/` 已按架构实现，全量 `pytest -v` 离线通过
+- [x] `.env.example` 与依赖配置已就绪，多会话 CLI（`python -m agent.main`）可正常启动
+- [x] `docs/PROMPT_TDD.md`、`docs/specs/*.md`、`docs/Agent_Architecture.md` 与 `docs/TEST_LOG.md` 末尾待办清单均已勾选且原有规格正文未被篡改
