@@ -40,7 +40,7 @@ def wire_call(key, name, arguments):
     return {"id": key, "type": "function", "function": {"name": name, "arguments": arguments}}
 
 
-def test_native_batch_mapping_and_reasoning_exclusion():
+def test_native_batch_mapping_and_reasoning_replay_with_tools():
     client, requests = sdk_fixture({"content": None, "reasoning_content": "current",
                                     "tool_calls": [wire_call("new1", "weather", '{"city":"杭州"}'),
                                                    wire_call("new2", "todo", '{"action":"list"}')]})
@@ -48,29 +48,75 @@ def test_native_batch_mapping_and_reasoning_exclusion():
     prior = ToolCall("old", "weather", {"city": "北京"})
     ctx = Context("static", AssistantMessage, tools=(weather,), summary="记录 & </conversation_summary>",
                   messages=(UserMessage("天气"), AssistantMessage("", (prior,), "private prior thought"),
-                            ToolResult("old", "晴"), UserMessage("继续")))
+                            ToolResult("old", "晴"), AssistantMessage("好的"), UserMessage("继续")))
     result = client.generate(ctx, ModelSettings("chat"))
     assert result == AssistantMessage("", (ToolCall("new1", "weather", {"city": "杭州"}),
                                            ToolCall("new2", "todo", {"action": "list"})), "current")
     [payload] = requests
-    head, summary, user, assistant, tool, followup = payload["messages"]
+    head, summary, user, assistant, tool, plain_assistant, followup = payload["messages"]
     assert head == {"role": "system", "content": "static"}
     assert "<conversation_summary>记录 &amp; &lt;/conversation_summary&gt;</conversation_summary>" in summary["content"]
     assert summary["role"] == "user"
     assert user == {"role": "user", "content": "天气"} and followup["content"] == "继续"
     assert assistant["role"] == "assistant" and assistant["tool_calls"][0]["id"] == "old"
+    assert assistant["reasoning_content"] == "private prior thought"
+    assert "reasoning_content" not in plain_assistant
     assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {"city": "北京"}
     assert tool == {"role": "tool", "tool_call_id": "old", "content": "晴"}
     assert payload["tools"] == [{"type": "function", "function": {
         "name": weather.name, "description": weather.description, "parameters": weather.parameters}}]
-    assert "reasoning_content" not in str(payload) and "private prior thought" not in str(payload)
+
+
+@pytest.mark.parametrize(("tools", "effort", "expect_reasoning"), [
+    ((WeatherTool(),), Effort.LOW, True),
+    ((WeatherTool(),), Effort.MEDIUM, True),
+    ((WeatherTool(),), Effort.HIGH, True),
+    ((WeatherTool(),), Effort.XHIGH, True),
+    ((WeatherTool(),), Effort.MAX, True),
+    ((WeatherTool(),), Effort.OFF, False),
+    ((), Effort.MEDIUM, False),
+    ((), Effort.MAX, False),
+    ((), Effort.OFF, False),
+])
+def test_historical_reasoning_replayed_only_when_tools_and_thinking_enabled(tools, effort, expect_reasoning):
+    from agent.domain.roles import Assistant
+
+    client, requests = sdk_fixture({"content": "ok"}, base_url="https://api.deepseek.com")
+    old = AssistantMessage("旧结论", thinking="已压缩旧思考")
+    active = AssistantMessage("先查天气", (ToolCall("c1", "weather", {"city": "上海"}),), "活跃思考")
+    session = Session(
+        messages=[old, UserMessage("天气"), active, ToolResult("c1", "晴")],
+        summary="旧对话摘要",
+        compacted_until=1,
+    )
+    ctx = Assistant("system", tools).context(session)
+    assert client.generate(ctx, ModelSettings("deepseek-v4-pro", effort)) == AssistantMessage("ok")
+    [payload] = requests
+    assert "已压缩旧思考" not in json.dumps(payload, ensure_ascii=False)
+    assistant_msgs = [m for m in payload["messages"] if m["role"] == "assistant"]
+    assert len(assistant_msgs) == 1
+    if expect_reasoning:
+        assert assistant_msgs[0]["reasoning_content"] == "活跃思考"
+    else:
+        assert "reasoning_content" not in assistant_msgs[0]
 
 
 @pytest.mark.parametrize(("base", "model", "effort", "tools", "expected"), [
-    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.MEDIUM, (WeatherTool(),), {"thinking": {"type": "disabled"}}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.OFF, (WeatherTool(),), {"thinking": {"type": "disabled"}}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.OFF, (), {"thinking": {"type": "disabled"}}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.LOW, (WeatherTool(),), {"reasoning_effort": "low"}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.MEDIUM, (WeatherTool(),), {"reasoning_effort": "high"}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.HIGH, (WeatherTool(),), {"reasoning_effort": "high"}),
+    ("https://api.deepseek.com/v1", "deepseek-v4-pro", Effort.XHIGH, (WeatherTool(),), {"reasoning_effort": "high"}),
     ("https://api.deepseek.com", "deepseek-flash", Effort.MAX, (), {"reasoning_effort": "max"}),
+    ("https://api.deepseek.com", "deepseek-v4-pro", Effort.MAX, (WeatherTool(),), {"reasoning_effort": "max"}),
+    ("https://api.deepseek.com", "deepseek-custom", Effort.HIGH, (WeatherTool(),), {}),
     ("https://api.deepseek.com.example.test", "deepseek-v4-pro", Effort.HIGH, (WeatherTool(),), {}),
+    ("https://api.openai.com/v1", "o3", Effort.OFF, (), {}),
     ("https://api.openai.com/v1", "o3", Effort.LOW, (), {"reasoning_effort": "low"}),
+    ("https://api.openai.com/v1", "o3-mini", Effort.MEDIUM, (WeatherTool(),), {"reasoning_effort": "medium"}),
+    ("https://api.openai.com/v1", "o4-mini", Effort.HIGH, (), {"reasoning_effort": "high"}),
+    ("https://api.openai.com/v1", "o3", Effort.XHIGH, (), {}),
     ("https://api.openai.com/v1", "o3", Effort.MAX, (), {}),
     ("https://api.openai.com/v1", "gpt-4o", Effort.HIGH, (), {}),
     ("https://example.test", "o3", Effort.HIGH, (), {}),
@@ -201,3 +247,12 @@ def test_import_guard_recognizes_relative_and_from_imports():
     assert list(imports_in(sample, "agent.app")) == [
         "agent.adapters", "agent.adapters", "agent.app.ports.ModelClient", "openai",
     ]
+
+
+def test_app_and_cli_contain_no_vendor_protocol_field_names():
+    forbidden = ("reasoning_effort", "reasoning_content", "extra_body", "thinking_level")
+    for folder in (ROOT / "agent" / "app", ROOT / "agent" / "adapters" / "cli"):
+        for path in folder.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            for term in forbidden:
+                assert term not in source, f"{path}: leaked vendor parameter {term}"

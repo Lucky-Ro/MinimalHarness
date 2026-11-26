@@ -28,7 +28,7 @@ agent/domain/
 - **`AssistantMessage`**（不可变 dataclass）
   - `text: str = ""`
   - `tool_calls: tuple[ToolCall, ...] = ()`
-  - `thinking: str | None = None`（用于承载 DeepSeek `reasoning_content` 等思考过程；仅作展示与日志，**不回传**到后续历史上下文）
+  - `thinking: str | None = None`（用于承载 DeepSeek `reasoning_content` 等思考过程；保存在会话历史中，供适配层在「带工具且处于 thinking 模式」时原样回传，仅在会话压缩/截断推进 `compacted_until` 时随旧消息自然丢弃）
 - **`ToolResult`**（不可变 dataclass）
   - `tool_call_id: str`
   - `content: str`
@@ -100,7 +100,7 @@ agent/domain/
   - `tools: tuple[Tool, ...]`
   - `context(session: Session) -> Context[AssistantMessage]`：
     - 读取 `session.summary` 与 `session.active_messages()`；
-    - 构造不含历史 `thinking` 的 `Context[AssistantMessage]`（`memory=()` 保持预留）。
+    - 保留未压缩历史中的 `AssistantMessage.thinking` 传入 `Context[AssistantMessage]`，是否回传由适配层按当前请求是否带 `tools` 且处于 thinking 模式决定（`ToolCallReviewer` 与 `ContextCompactor` 仍剥离历史 `thinking`；`memory=()` 保持预留）。
 
 - **`ToolCallReviewer`**（工具调用审核上下文组装者）
   - `instruction: str`
@@ -121,3 +121,4 @@ agent/domain/
 - [x] 实现 `agent/domain/context.py`（`Context[O]` 含 `memory` 预留槽位、`estimate_tokens`、`estimate_context_tokens`、`split_for_compaction` 原子对安全切分）
 - [x] 实现 `agent/domain/roles.py`（`Decision`、`CompactionSummary`、`Assistant`、`ToolCallReviewer`、`ContextCompactor`）
 - [x] 验证 `agent/domain/` 零第三方依赖、零 `app`/`adapters` 导入，且 `tests/test_domain.py` 全绿
+- [x] 调整 `agent/domain/roles.py` 中 `Assistant.context(session)`，保留 `session.active_messages()` 的 `AssistantMessage.thinking` 供适配层按协议条件回传（`ToolCallReviewer` 与 `ContextCompactor` 继续剥离 `thinking`），并补充对应单测

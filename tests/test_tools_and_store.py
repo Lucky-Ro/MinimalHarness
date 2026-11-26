@@ -1,6 +1,6 @@
 import json
 import os
-import subprocess
+import shlex
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
@@ -67,35 +67,57 @@ def test_weather_known_city_date_and_unknown_fallback():
     assert unknown == tool.execute({"city": "小岛"}, CTX)
 
 
-def test_bash_real_allowed_command_returns_streams_and_exit_code():
+def test_bash_runs_native_language_and_persists_only_in_its_session(tmp_path):
     from agent.adapters.tools.bash import BashTool
 
-    result = BashTool().execute({"command": 'echo "hello world"'}, CTX)
-    assert json.loads(result) == {"stdout": "hello world\n", "stderr": "", "exit_code": 0}
+    tool = BashTool(tmp_path)
+    def run(script, ctx=CTX):
+        return json.loads(tool.execute({"command": script}, ctx))
+
+    script = """names=(pear apple)
+for item in "${names[@]}"; do printf '%s\\n' "$item"; done | sort > sorted
+[[ -n "$BASH_VERSION" ]] && cat sorted"""
+    assert run(script) == {"stdout": "apple\npear\n", "stderr": "", "exit_code": 0}
+    assert run("cat sorted")["stdout"] == "apple\npear\n"
+    assert run("[[ ! -e sorted ]]", ToolContext("another"))["exit_code"] == 0
 
 
-def test_bash_enforces_command_policy_even_without_reviewer(monkeypatch):
+def test_bash_preserves_nonzero_status_and_stderr(tmp_path):
     from agent.adapters.tools.bash import BashTool
 
-    def unexpected_run(*args, **kwargs):
-        pytest.fail("rejected input was passed to subprocess")
+    result = BashTool(tmp_path).execute({"command": "printf ok; printf problem >&2; exit 7"}, CTX)
+    assert json.loads(result) == {"stdout": "ok", "stderr": "problem", "exit_code": 7}
 
-    monkeypatch.setattr(subprocess, "run", unexpected_run)
+
+def test_bash_does_not_inherit_secrets_and_cannot_read_or_write_outside(tmp_path, monkeypatch):
+    from agent.adapters.tools.bash import BashTool
+
+    marker = tmp_path / "outside fixture"
+    marker.write_text("host-only")
+    monkeypatch.setenv("OPENAI_API_KEY", "private-test-value")
+    tool = BashTool(tmp_path)
+    def run(script):
+        return json.loads(tool.execute({"command": script}, CTX))
+
+    assert run('printf %s "${OPENAI_API_KEY-unset}"')["stdout"] == "unset"
+    quoted = shlex.quote(str(marker))
+    assert run(f"cat {quoted}")["exit_code"] != 0
+    assert run(f"printf changed > {quoted}")["exit_code"] != 0
+    assert marker.read_text() == "host-only"
+
+
+def test_bash_enforces_hard_rules_even_without_reviewer(tmp_path):
+    from agent.adapters.tools.bash import BashTool
+
     with pytest.raises(ValueError):
-        BashTool().execute({"command": "pwd; ls"}, CTX)
+        BashTool(tmp_path).execute({"command": "cat .env"}, CTX)
 
 
-def test_bash_limits_a_stalled_command(monkeypatch):
+def test_bash_reports_shell_syntax_error(tmp_path):
     from agent.adapters.tools.bash import BashTool
 
-    def stalled(argv, **options):
-        assert argv == ["/bin/pwd"] and options["timeout"] == 5
-        assert not options.get("shell")
-        raise subprocess.TimeoutExpired(argv, options["timeout"])
-
-    monkeypatch.setattr(subprocess, "run", stalled)
-    with pytest.raises(TimeoutError, match="5"):
-        BashTool().execute({"command": "pwd"}, CTX)
+    result = json.loads(BashTool(tmp_path).execute({"command": "echo 'missing quote"}, CTX))
+    assert result["exit_code"] != 0 and result["stderr"]
 
 
 def test_todos_are_durable_and_isolated_by_trusted_context(tmp_path):
@@ -320,3 +342,27 @@ def test_first_save_cannot_replace_a_racing_case_variant(tmp_path, monkeypatch):
         store.save(competing)
         assert store.load("team") == competing
     assert store.load("Team") == original
+
+
+def test_linux_bash_confines_mounts_and_network(tmp_path):
+    from agent.adapters.tools.bash import _sandbox_argv
+
+    argv = _sandbox_argv("linux", tmp_path, "printf ok")
+    assert "--unshare-net" in argv or "--unshare-all" in argv
+    assert "--die-with-parent" in argv
+    bind = argv.index("--bind")
+    assert argv[bind + 1:bind + 3] == [str(tmp_path), "/work"]
+    readonly = [argv[n + 1] for n, arg in enumerate(argv) if arg in ("--ro-bind", "--ro-bind-try")]
+    assert "/usr/bin" in readonly and not {"/", "/home", "/etc"}.intersection(readonly)
+    assert argv[-5:] == ["/bin/bash", "--noprofile", "--norc", "-c", "printf ok"]
+
+
+def test_bash_fails_closed_if_sandbox_launcher_is_unavailable(tmp_path, monkeypatch):
+    from agent.adapters.tools import bash
+
+    def missing(argv, cwd, env, timeout=5):
+        raise FileNotFoundError("launcher unavailable")
+
+    monkeypatch.setattr(bash, "run_process", missing)
+    with pytest.raises(RuntimeError, match="沙箱"):
+        bash.BashTool(tmp_path).execute({"command": "pwd"}, CTX)

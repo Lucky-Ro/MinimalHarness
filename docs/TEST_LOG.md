@@ -60,7 +60,7 @@
 | R-01 | 未知工具名 / 空工具名 | 拒绝（`should_allow=False`） | 未知、空字符串、纯空白及空值均拒绝 | Phase 2 参数化用例 |
 | R-02 | 非 `dict` 参数 / 缺失必填字段 | 拒绝 | 非对象、缺字段、类型错误及空白字符串均拒绝 | Phase 2 参数化用例 |
 | R-03 | `bash` 破坏性命令（`rm -rf` / `mkfs` / `dd` / `sudo`） | 拒绝 | 高危命令均在创建子进程前拒绝 | Phase 2 参数化用例 |
-| R-04 | `bash` 拼接绕过与管道执行（`&&` / `;` / `curl \| sh` / `$(...)`） | 拒绝 | 串接、管道、命令替换与换行均拒绝 | Phase 2 参数化用例 |
+| R-04 | `bash` 拼接绕过与管道执行（`&&` / `;` / `curl \| sh` / `$(...)`） | 拒绝 | 原版拒绝所有串接；真实 Bash 版本区分合法组合与已知高危调用，见下方变更记录 | Phase 2 参数化用例 |
 | R-05 | `bash` 敏感文件与路径穿越（`/etc/passwd` / `~/.ssh` / `.env`） | 拒绝 | 读取敏感文件和向上遍历均拒绝 | Phase 2 参数化用例 |
 | R-06 | `calculator` 代码注入尝试（`__import__` / `eval` / `open`） | 拒绝 | 函数调用、导入、空表达式及超长表达式均拒绝 | Phase 2 参数化用例 |
 | R-07 | `todo` 非法 `action` 或缺失 `title`/`todo_id` | 拒绝 | 非法动作及对应动作缺参均拒绝 | Phase 2 参数化用例 |
@@ -72,3 +72,22 @@
 - [x] R-01 ~ R-08 边界场景已全部更新为真实执行结果
 - [x] 过程中出现的所有失败用例、根因与修复方案均已如实记录，未篡改测试敷衍通过
 - [x] 全量离线 `pytest -v` 最终通过，且各设计文档末尾待办清单已全部勾选
+
+## 真实 Bash 与轻量模型审核
+
+| 阶段 | 测试与结果 | 发现与处理 |
+| --- | --- | --- |
+| 规则 Red / Green | 首轮 9 失败、64 通过；实现后 73 通过。补测字面词时 1 失败、8 通过、65 未选，修复后 74 通过。 | 原有三命令白名单阻止管道进入模型审核。改为高危模式检查，修正将普通输出中的 reboot 误判为命令的问题。 |
+| 审核链 Red | 三个分支均失败，另 7 项未选。 | 正常脚本在调用 Flash 前即遭旧规则拒绝。 |
+| 进程监督 Red / Green | 模块未实现时 6 失败，实现后 6 通过。 | 验证实际退出码、两个输出流、输出上限、超时与同组后台进程清理。 |
+| 原生执行 Red | 5 失败、45 未选；平台启动检查 2 失败、50 未选。 | 旧执行器依赖已经替换的白名单函数，尚不能执行真实 Bash 脚本。 |
+| 原生执行 Green | Codex 外层沙箱中 4 失败、3 通过、45 未选；在正常 macOS 环境复测 7 通过、45 未选。 | 系统拒绝嵌套开启 Seatbelt。独立探测还确认当前系统需要 dyld 引导配置。正常环境验证了脚本输出、会话文件持久化与隔离、语法错误、退出码和启动器不可用时的处理。 |
+| 审核链 Green | Codex 外层沙箱内运行入口模块为 1 失败、9 通过，正常 macOS 环境为 10 通过。 | 实际组装的服务将同一条脚本交给离线审核模型，再由原生 Bash 执行。批准时 tee 写入并返回 DEEP SKY，拒绝与审核超时均未产生文件。 |
+| 本次全量验收 | `.venv/bin/pytest -v`，macOS，209 通过，0 失败，0 跳过，2.93 秒。 | 未调用线上模型。Linux 验证了 bubblewrap 启动参数；本机实际执行的是 macOS 后端。 |
+
+## CLI 统一 Effort 选择与适配层协议翻译
+
+| 阶段 | 测试与结果 | 发现与处理 |
+| --- | --- | --- |
+| Effort 改造 Red | 先补齐 `test_domain.py`、`test_agent_service.py`、`test_openai_and_architecture.py`、`test_cli.py`、`test_main.py` 后执行 `.venv/bin/pytest -q`，在收集阶段报错（`AttributeError: type object 'Effort' has no attribute 'XHIGH'`）。 | 旧 `Effort` 枚举为 `NONE/MINIMAL/LOW/MEDIUM/HIGH/MAX`，尚未对齐 6 档 `off/low/medium/high/xhigh/max` 及各层新契约。 |
+| Effort 改造 Green | 实现 `roles.py`、`ports.py`、`service.py`、`openai_client.py`、`cli/app.py`、`main.py` 后执行 `.venv/bin/pytest -v`：234 通过，0 失败，0 跳过，3.33 秒。 | 覆盖 `Assistant.context` 保留未压缩历史 `thinking`、`AgentService.set_effort` 运行期全局切换且不影响压缩/审核模型、6 档 `Effort` 跨端点安全映射、带 `tools` 且非 `off` 时原样回传 `reasoning_content`、CLI `/effort` 命令、入口 `ASSISTANT_EFFORT` 校验以及应用层/CLI 零厂商字段泄漏与 AST 依赖方向守卫。 |

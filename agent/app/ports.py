@@ -8,12 +8,23 @@ from agent.domain.session import Session, ToolCall
 
 
 class Effort(Enum):
-    NONE = "none"
-    MINIMAL = "minimal"
+    OFF = "off"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+    XHIGH = "xhigh"
     MAX = "max"
+
+    @classmethod
+    def parse(cls, value: str) -> "Effort":
+        if not isinstance(value, str):
+            raise ValueError("Effort 必须是字符串")
+        normalized = value.strip().lower()
+        for member in cls:
+            if member.value == normalized:
+                return member
+        choices = ", ".join(member.value for member in cls)
+        raise ValueError(f"Effort 可选 {choices}")
 
 
 @dataclass(frozen=True)
@@ -23,8 +34,8 @@ class ModelSettings:
     context_window: int = 64_000
 
     def __post_init__(self) -> None:
-        if not self.model_id.strip() or self.context_window < 1:
-            raise ValueError("模型名称不能为空，上下文窗口必须为正数")
+        if not self.model_id.strip() or self.context_window < 1 or not isinstance(self.effort, Effort):
+            raise ValueError("模型名称不能为空，上下文窗口必须为正数，effort 必须为 Effort 枚举")
 
 
 O = TypeVar("O")

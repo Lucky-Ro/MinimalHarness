@@ -76,3 +76,26 @@ def test_cli_stays_in_session_after_errors_and_masks_model_error_detail(tmp_path
     assert "sample-private-provider-token" not in output
     [session] = service.list_sessions()
     assert session.messages == [UserMessage("第一次"), UserMessage("第二次"), AssistantMessage("恢复成功")]
+
+
+def test_cli_effort_command_views_switches_globally_and_handles_invalid_input(tmp_path, monkeypatch, capsys):
+    from agent.app.ports import Effort
+
+    service = service_with_replies(tmp_path, [
+        lambda ctx, settings: AssistantMessage(f"档位={settings.effort.value}"),
+        lambda ctx, settings: AssistantMessage(f"新会话档位={settings.effort.value}"),
+    ])
+    output = run_cli(
+        service,
+        "/effort\n/effort bad\n/effort a b\n/effort xhigh\n测试主会话\n/new\n/effort OFF\n测试新会话\n/quit\n",
+        monkeypatch,
+        capsys,
+    )
+    assert "/effort" in output
+    assert all(level in output for level in ("off", "low", "medium", "high", "xhigh", "max"))
+    assert "用法" in output
+    assert "档位=xhigh" in output
+    assert "新会话档位=off" in output
+    assert service.get_effort() == Effort.OFF
+    for vendor_term in ("reasoning_effort", "reasoning_content", "extra_body", "thinking_level"):
+        assert vendor_term not in output

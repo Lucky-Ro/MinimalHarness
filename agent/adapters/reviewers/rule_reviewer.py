@@ -2,7 +2,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from agent.adapters.command_policy import safe_command_argv
+from agent.adapters.command_policy import validate_command
 from agent.adapters.tool_schemas import BUILTIN_SCHEMAS
 from agent.domain.roles import Decision
 from agent.domain.session import Session, ToolCall
@@ -49,7 +49,7 @@ class RuleBasedReviewer:
         try:
             _check_arguments(args, self.schemas[name])
             if name == "bash":
-                safe_command_argv(args.get("command"))
+                validate_command(args.get("command"))
             elif name == "calculator":
                 expression = args.get("expression")
                 if not isinstance(expression, str) or not re.fullmatch(r"[0-9eE.+*/()\s-]{1,1000}", expression):

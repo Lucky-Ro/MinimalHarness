@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import monotonic
 from typing import Any
 
@@ -8,7 +8,7 @@ from agent.domain.roles import Assistant, CompactionSummary, ContextCompactor, D
 from agent.domain.session import AssistantMessage, Message, Session, ToolCall, ToolResult, UserMessage
 from agent.domain.tool import ToolContext
 
-from .ports import ModelClient, ModelSettings, SessionNotFoundError, SessionStore, ToolReviewer, TraceLogger
+from .ports import Effort, ModelClient, ModelSettings, SessionNotFoundError, SessionStore, ToolReviewer, TraceLogger
 
 
 @dataclass
@@ -58,6 +58,22 @@ class AgentService:
     def get_session(self, session_id: str) -> Session:
         return self.session_store.load(session_id)
 
+    def get_effort(self) -> Effort:
+        return self.assistant_model_settings.effort
+
+    def set_effort(self, effort: Effort) -> ModelSettings:
+        if not isinstance(effort, Effort):
+            raise ValueError("effort must be an Effort instance")
+        previous = self.assistant_model_settings.effort
+        self.assistant_model_settings = replace(self.assistant_model_settings, effort=effort)
+        if self.tracer is not None:
+            self.tracer.log("effort_changed", {
+                "previous_effort": previous.value,
+                "effort": effort.value,
+                "model": self.assistant_model_settings.model_id,
+            })
+        return self.assistant_model_settings
+
     def _append(self, session: Session, message: Message) -> None:
         session.append(message)
         self.session_store.save(session)
@@ -92,21 +108,23 @@ class AgentService:
         attempted = False
         limit = int(self.assistant_model_settings.context_window * self.compaction_threshold)
         for iteration in range(1, self.max_iterations + 1):
+            settings = self.assistant_model_settings
             context = self.assistant.context(session)
             if not attempted and estimate_context_tokens(context) >= limit:
                 attempted = True
                 context = self._compact(session, context)
 
             try:
-                reply = self.model_client.generate(context, self.assistant_model_settings)
+                reply = self.model_client.generate(context, settings)
                 if not isinstance(reply, AssistantMessage):
                     raise TypeError("Expected AssistantMessage from the main model")
             except Exception as exc:
                 self._log("model_error", session, iteration=iteration, error=str(exc))
                 raise
             self._append(session, reply)
-            self._log("model_called", session, iteration=iteration, model=self.assistant_model_settings.model_id,
-                      has_thinking=bool(reply.thinking), tool_call_count=len(reply.tool_calls))
+            self._log("model_called", session, iteration=iteration, model=settings.model_id,
+                      effort=settings.effort.value, has_thinking=bool(reply.thinking),
+                      tool_call_count=len(reply.tool_calls))
             if not reply.tool_calls:
                 return
             for call in reply.tool_calls:

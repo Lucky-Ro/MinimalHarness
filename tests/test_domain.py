@@ -8,25 +8,29 @@ from agent.domain.roles import Assistant, CompactionSummary, ContextCompactor, D
 from agent.domain.session import AssistantMessage, Session, ToolCall, ToolResult, UserMessage
 
 
-def test_roles_preserve_history_without_replaying_thinking():
+def test_roles_keep_active_assistant_thinking_until_compacted_and_strip_elsewhere():
     call = ToolCall("c1", "weather", {"city": "北京"})
-    old, current = UserMessage("昨天"), AssistantMessage("晴", thinking="hidden")
+    old = AssistantMessage("昨日多云", thinking="已压缩思考")
+    current = AssistantMessage("晴", thinking="当前思考")
     session = Session(summary="北京", compacted_until=1)
     assert session.id != Session().id
     session.append(old)
     session.append(current)
     assistant = Assistant("回答问题", ()).context(session)
     assert assistant.summary == "北京" and assistant.memory == ()
-    assert assistant.messages == (AssistantMessage("晴"),)
+    assert assistant.messages == (current,) and assistant.messages[0].thinking == "当前思考"
     assert assistant.output_type is AssistantMessage
     review = ToolCallReviewer("审核").context(session, call)
     assert review.tools == () and review.output_type is Decision
     assert "weather" in str(review.messages) and "北京" in str(review.messages)
+    assert "当前思考" not in str(review.messages) and "已压缩思考" not in str(review.messages)
     compact = ContextCompactor("压缩").context("旧摘要", [current])
     assert compact.summary == "旧摘要" and compact.tools == ()
     assert compact.output_type is CompactionSummary
     assert compact.messages == (AssistantMessage("晴"),)
     assert session.active_messages() == [current] and session.messages == [old, current]
+    session.compacted_until = 2
+    assert Assistant("回答问题", ()).context(session).messages == ()
 
 
 def test_estimation_counts_all_visible_inputs():

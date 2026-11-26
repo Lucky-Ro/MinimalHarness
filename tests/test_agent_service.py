@@ -49,9 +49,74 @@ def test_direct_follow_up_remembers_context_and_returns_increment_only(tmp_path)
     assert service.chat("notes", "我叫什么？") == [UserMessage("我叫什么？"), second]
     context, settings = model.calls[-1]
     assert settings.model_id == "assistant"
-    assert context.messages == (UserMessage("我叫小雨"), AssistantMessage("我记下了。"), UserMessage("我叫什么？"))
+    assert context.messages == (UserMessage("我叫小雨"), first, UserMessage("我叫什么？"))
     assert service.get_session("notes").messages[1] == first
     assert [name for name, _ in trace.events].count("model_called") == 2
+
+
+def test_effort_parses_six_levels_case_insensitively():
+    from agent.app.ports import Effort
+
+    assert [e.value for e in Effort] == ["off", "low", "medium", "high", "xhigh", "max"]
+    assert ModelSettings("assistant").effort == Effort.MEDIUM
+    for raw, expected in (("OFF", Effort.OFF), (" low ", Effort.LOW), ("Medium", Effort.MEDIUM),
+                          ("HIGH", Effort.HIGH), ("xHigh", Effort.XHIGH), ("MAX", Effort.MAX)):
+        assert Effort.parse(raw) == expected
+    for invalid in ("", "   ", "none", "minimal", "ultra", "bad"):
+        with pytest.raises(ValueError):
+            Effort.parse(invalid)
+
+
+def test_set_effort_switches_globally_without_affecting_compactor_or_reviewer(tmp_path):
+    from agent.adapters.logging.trace_logger import MemoryTraceLogger
+    from agent.adapters.models.fake_client import FakeModelClient
+    from agent.adapters.reviewers.llm_reviewer import LlmToolReviewer
+    from agent.app.ports import Effort
+    from agent.app.service import AgentService
+    from agent.domain.roles import ToolCallReviewer
+
+    tools = (WeatherTool(),)
+    call = request("w1", "weather", city="上海")
+    model = FakeModelClient([
+        CompactionSummary("已压缩摘要"),
+        call,
+        Decision(True),
+        AssistantMessage("上海多云"),
+        AssistantMessage("第二会话完成"),
+    ])
+    trace = MemoryTraceLogger()
+    store = JsonlSessionStore(tmp_path / "sessions")
+    flash_settings = ModelSettings("flash", effort=Effort.LOW)
+    reviewer = LlmToolReviewer(ToolCallReviewer("审核"), model, flash_settings)
+    service = AgentService(
+        model_client=model, session_store=store, assistant=Assistant("回答问题", tools),
+        reviewer=reviewer, compactor=ContextCompactor("概括事实"),
+        assistant_model_settings=ModelSettings("assistant", context_window=20),
+        compactor_model_settings=flash_settings, keep_recent_messages=1, tracer=trace,
+    )
+    assert service.get_effort() == Effort.MEDIUM
+    updated = service.set_effort(Effort.XHIGH)
+    assert updated == ModelSettings("assistant", effort=Effort.XHIGH, context_window=20)
+    assert service.get_effort() == Effort.XHIGH
+    assert service.compactor_model_settings == flash_settings
+    assert reviewer.reviewer_model_settings == flash_settings
+
+    store.save(Session("s1", [UserMessage("x" * 100)]))
+    s2 = service.new_session("s2")
+    service.chat("s1", "查上海天气")
+    service.chat(s2.id, "你好")
+
+    assert [(s.model_id, s.effort) for _, s in model.calls] == [
+        ("flash", Effort.LOW),
+        ("assistant", Effort.XHIGH),
+        ("flash", Effort.LOW),
+        ("assistant", Effort.XHIGH),
+        ("assistant", Effort.XHIGH),
+    ]
+    changed = [payload for name, payload in trace.events if name == "effort_changed"]
+    assert changed == [{"previous_effort": "medium", "effort": "xhigh", "model": "assistant"}]
+    called = [payload for name, payload in trace.events if name == "model_called"]
+    assert [payload["effort"] for payload in called] == ["xhigh", "xhigh", "xhigh"]
 
 
 def test_two_windows_resume_with_isolated_weather_and_report_todos(tmp_path):

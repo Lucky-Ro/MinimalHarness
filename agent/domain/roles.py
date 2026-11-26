@@ -29,7 +29,7 @@ class Assistant:
 
     def context(self, session: Session) -> Context[AssistantMessage]:
         return Context(instruction=self.instruction, output_type=AssistantMessage, tools=self.tools,
-                       messages=_visible_messages(session.active_messages()), summary=session.summary)
+                       messages=tuple(session.active_messages()), summary=session.summary)
 
 
 @dataclass(frozen=True)

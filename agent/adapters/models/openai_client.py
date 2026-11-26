@@ -14,12 +14,14 @@ from agent.domain.session import AssistantMessage, Message, ToolCall, ToolResult
 O = TypeVar("O", AssistantMessage, Decision, CompactionSummary)
 
 
-def _wire_message(message: Message) -> dict:
+def _wire_message(message: Message, *, include_reasoning: bool = False) -> dict:
     if isinstance(message, UserMessage):
         return {"role": "user", "content": message.text}
     if isinstance(message, ToolResult):
         return {"role": "tool", "tool_call_id": message.tool_call_id, "content": message.content}
-    payload = {"role": "assistant", "content": message.text}
+    payload: dict[str, Any] = {"role": "assistant", "content": message.text}
+    if include_reasoning and message.thinking is not None:
+        payload["reasoning_content"] = message.thinking
     if message.tool_calls:
         payload["tool_calls"] = [
             {"id": call.id, "type": "function", "function": {
@@ -98,18 +100,20 @@ class OpenAIClient:
     def _model_options(self, settings: ModelSettings, has_tools: bool) -> dict:
         effort = settings.effort
         if self.host == "api.deepseek.com":
-            # DeepSeek requires historical reasoning when thinking and tools are both on.
-            if has_tools or effort == Effort.NONE:
+            if effort == Effort.OFF:
                 return {"extra_body": {"thinking": {"type": "disabled"}}}
             if settings.model_id in {"deepseek-flash", "deepseek-v4-pro"}:
-                mapped = {Effort.MINIMAL: "low", Effort.MEDIUM: "high"}.get(effort, effort.value)
+                mapped = {Effort.MEDIUM: "high", Effort.XHIGH: "high"}.get(effort, effort.value)
                 return {"reasoning_effort": mapped}
+            return {}
         if self.host == "api.openai.com" and settings.model_id in {"o3", "o3-mini", "o4-mini"}:
             if effort in (Effort.LOW, Effort.MEDIUM, Effort.HIGH):
                 return {"reasoning_effort": effort.value}
         return {}
 
     def generate(self, context: Context[O], model_settings: ModelSettings) -> O:
+        has_tools = bool(context.tools)
+        include_reasoning = has_tools and model_settings.effort != Effort.OFF
         messages = [{"role": "system", "content": context.instruction}]
         if context.summary:
             summary = escape(context.summary, quote=False)
@@ -123,8 +127,8 @@ class OpenAIClient:
             }, ensure_ascii=False)
             messages.append({"role": "user", "content": evidence})
         else:
-            messages.extend(_wire_message(m) for m in context.messages)
-        params = self._model_options(model_settings, bool(context.tools))
+            messages.extend(_wire_message(m, include_reasoning=include_reasoning) for m in context.messages)
+        params = self._model_options(model_settings, has_tools)
         if context.tools:
             params["tools"] = [{"type": "function", "function": {
                 "name": t.name, "description": t.description, "parameters": t.parameters,

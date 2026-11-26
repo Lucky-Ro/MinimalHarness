@@ -17,8 +17,9 @@ agent/app/
 
 ## 2. `ports.py` — 抽象端口定义
 
-- **`Effort`**（`Enum`）
-  - `NONE`, `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`, `MAX`（适配层负责将其转译为具体厂商参数，如 OpenAI 的 `reasoning_effort`）
+- **`Effort`**（`Enum`，与架构笔记 6 档完全一致）
+  - `OFF = "off"`, `LOW = "low"`, `MEDIUM = "medium"`, `HIGH = "high"`, `XHIGH = "xhigh"`, `MAX = "max"`（适配层负责将其转译为具体厂商参数，如 OpenAI 的 `reasoning_effort`）
+  - 可选提供 `Effort.parse(value: str) -> Effort`（大小写不敏感解析，非法值抛 `ValueError`）
 - **`ModelSettings`**（不可变 dataclass）
   - `model_id: str`
   - `effort: Effort = Effort.MEDIUM`
@@ -35,7 +36,7 @@ agent/app/
   - 设计意图：让 `AgentService` 既能注入 `RuleBasedReviewer`（TDD 离线测试 / 硬护栏），也能注入 `LlmToolReviewer`（真实 Flash 轻量模型）或 `CompositeReviewer`（先规则后模型），无需改动一行编排代码。
 - **`TraceLogger`**（`Protocol` 或 `ABC`，可选默认空实现 `NullTraceLogger`）
   - `log(event: str, payload: dict[str, Any]) -> None`
-  - 用于记录关键 trace 事件：`session_created`、`user_message`、`compaction_triggered`、`compaction_succeeded`、`compaction_failed`、`model_called`、`tool_reviewed`、`tool_executed`、`tool_error`、`max_iterations_reached`。
+  - 用于记录关键 trace 事件：`session_created`、`user_message`、`effort_changed`、`compaction_triggered`、`compaction_succeeded`、`compaction_failed`、`model_called`（含当前 `effort`）、`tool_reviewed`、`tool_executed`、`tool_error`、`max_iterations_reached`。
 
 ---
 
@@ -63,6 +64,8 @@ agent/app/
    - 从 `session_store.load(session_id)` 加载指定会话。
 4. **`chat(session_id: str, user_message: str) -> list[Message]`**
    - 返回**本次 `chat()` 调用期间新产生的所有 `Message`**（不含旧历史），方便 CLI 增量打印和单测精准断言。
+5. **`get_effort() -> Effort` 与 `set_effort(effort: Effort) -> ModelSettings`**（运行期全局切换）
+   - 读取或更新当前运行期的 `assistant_model_settings.effort`（使用 `dataclasses.replace` 生成新的不可变 `ModelSettings`），对后续所有会话的主对话调用生效，不影响 `compactor_model_settings` 与审核模型，也不改动 `Session` 持久化结构；切换时记录 `effort_changed` trace。
 
 ### 3.3 `chat()` 核心状态机（逐步规范）
 
@@ -118,3 +121,5 @@ agent/app/
 - [x] 实现 70% 上下文窗口 LLM 滚动压缩编排（保留完整历史仅推进 `compacted_until`、失败捕获记 `compaction_failed` 优雅降级且下次发消息自动重试、`delta == 0` 跳过）
 - [x] 实现工具审核拒绝、未知工具、工具执行异常转 `ToolResult(is_error=True)` 闭环与 `max_iterations` 兜底
 - [x] 验证 `agent/app/` 仅依赖标准库与 `agent.domain`，且 `tests/test_agent_service.py` 全绿
+- [x] 将 `agent/app/ports.py` 的 `Effort` 枚举对齐笔记改为 6 档：`OFF` / `LOW` / `MEDIUM` / `HIGH` / `XHIGH` / `MAX`（并补充大小写不敏感解析）
+- [x] 在 `agent/app/service.py` 新增运行期全局切换方法 `get_effort()` / `set_effort(effort)`，记录 `effort_changed` 并在 `model_called` 中输出当前 `effort`，补齐 `tests/test_agent_service.py` 单测

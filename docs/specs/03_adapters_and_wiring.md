@@ -42,7 +42,7 @@ agent/
     - 若 `context.summary` 非空：紧跟一条带 XML 边界标签的摘要消息 `<conversation_summary>...</conversation_summary>`，明确声明仅为历史参考。
     - `context.messages` 映射：
       - `UserMessage` -> `{"role": "user", "content": msg.text}`
-      - `AssistantMessage` -> `{"role": "assistant", "content": msg.text, "tool_calls": [...]}`（**不回传** `msg.thinking`）
+      - `AssistantMessage` -> `{"role": "assistant", "content": msg.text, "tool_calls": [...]}`；当且仅当**当前请求带 `tools` 且处于 thinking 模式**（非 `Effort.OFF`）时，将历史 `AssistantMessage.thinking` 原样回传为 `"reasoning_content": msg.thinking`（仅在会话压缩/截断历史推进 `compacted_until` 时随旧消息一起丢弃）；其余场景不回传 `reasoning_content`
       - `ToolResult` -> `{"role": "tool", "tool_call_id": msg.tool_call_id, "content": msg.content}`
     - `tools` 映射为 OpenAI `[{"type": "function", "function": {"name", "description", "parameters"}}]`。
     - **响应解析**：
@@ -53,7 +53,10 @@ agent/
     - 要求模型返回 JSON 对象 `{"should_allow": bool, "reason": str | null}`（可使用 `response_format={"type": "json_object"}` 或带容错的 JSON 解析），映射为 `Decision`。
   - **`Context[CompactionSummary]`**：
     - 要求模型返回简洁摘要文本（或 JSON `{"summary": str}`），映射为 `CompactionSummary`。
-  - **`Effort` 参数转译**：仅在目标模型支持 `reasoning_effort` 时透传，对不支持该参数的兼容接口安全省略，避免 400 报错。
+  - **`Effort` 参数转译（6 档：`off / low / medium / high / xhigh / max`）**：
+    - DeepSeek（`api.deepseek.com`）：`Effort.OFF` 显式下发 `extra_body={"thinking": {"type": "disabled"}}`；非 `OFF` 档位（即使 `has_tools=True`）按模型能力翻译并透传 `reasoning_effort`（同时配合上述条件回传历史 `reasoning_content`），不再因带工具强制关闭 thinking。
+    - OpenAI 推理模型（`api.openai.com` 的 `o3` / `o3-mini` / `o4-mini` 等）：安全映射并透传支持的 `reasoning_effort` 档位。
+    - 不支持该参数的模型或自定义兼容端点：安全省略，避免 HTTP 400 报错。
 
 ---
 
@@ -118,10 +121,11 @@ agent/
   - `/list`：列出所有会话 ID、消息条数及是否已有压缩摘要。
   - `/use <session_id>`：切换到指定会话继续对话。
   - `/history`：打印当前会话的历史消息（含摘要状态）。
+  - `/effort` / `/effort <off|low|medium|high|xhigh|max>`：查看或运行期全局切换应用层 `Effort` 档位（不暴露任何厂商字段名）。
   - `/quit` 或 `/exit`：退出 CLI。
   - 普通文本输入：调用 `service.chat(current_session_id, text)`，清晰打印思考过程（如有）、工具调用/审核摘要及最终回复。
 - **`main.py` 组装根**：
-  - 从环境变量（支持 `.env`）读取 `OPENAI_API_KEY`、`OPENAI_BASE_URL`（如 DeepSeek `https://api.deepseek.com`）、`ASSISTANT_MODEL`（如 `deepseek-chat` / `deepseek-reasoner`）、`FLASH_MODEL`（用于审核与 70% 压缩的轻量模型）、`CONTEXT_WINDOW`、`REVIEWER_MODE`（`rule` / `llm` / `composite`）。
+  - 从环境变量（支持 `.env`）读取 `OPENAI_API_KEY`、`OPENAI_BASE_URL`（如 DeepSeek `https://api.deepseek.com`）、`ASSISTANT_MODEL`（如 `deepseek-chat` / `deepseek-reasoner`）、`ASSISTANT_EFFORT`（默认 `medium`，可选 `off / low / medium / high / xhigh / max`）、`FLASH_MODEL`（用于审核与 70% 压缩的轻量模型）、`CONTEXT_WINDOW`、`REVIEWER_MODE`（`rule` / `llm` / `composite`）。
   - 创建具体对象并组装 `AgentService` 与 `CliApp`，调用 `cli.run()`。
 
 ---
@@ -135,3 +139,6 @@ agent/
 - [x] 实现 `agent/adapters/logging/trace_logger.py` 结构化 Trace 日志
 - [x] 实现 `agent/adapters/cli/app.py` 多会话 CLI（`/new`、`/list`、`/use`、`/history`、`/quit`）与 `agent/main.py` 组装根
 - [x] 补齐 `.env.example` 与依赖文件（`pyproject.toml` 或 `requirements.txt`）
+- [x] 更新 `agent/adapters/models/openai_client.py`：适配 6 档 `Effort`（`off / low / medium / high / xhigh / max`）翻译；解除 DeepSeek `has_tools` 强制关 thinking 的限制，在「带 tools 且处于 thinking 模式」时将历史 `AssistantMessage.thinking` 原样回传为 `reasoning_content`（并在 `tests/test_openai_and_architecture.py` 补齐单测）
+- [x] 更新 `agent/adapters/cli/app.py`：新增 `/effort` 与 `/effort <档位>` 命令、启动命令提示与非法参数提示（并在 `tests/test_cli.py` 补齐单测）
+- [x] 更新 `agent/main.py` 与 `.env.example`：支持读取 `ASSISTANT_EFFORT`（默认 `medium`）并校验合法性
